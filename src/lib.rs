@@ -61,22 +61,14 @@ pub mod life {
         }
 
         pub fn get_nearby(&self, pos: &Vec2<isize>) -> isize {
-
             let mut count: isize = 0;
+            let offset: [(isize, isize); 8] = [(-1, -1), (-1, 0), (-1, 1),
+                                                (0, -1), (0, 1), 
+                                                (1, -1), (1, 0), (1, 1)];
 
-            // xxx
-            // xCx
-            // xxx - [-1, 0, 1] offset
-            let offset: [isize; 3] = [-1, 0, 1];
-
-            for off1 in offset {
-                for off2 in offset {
-                    // You check the state first, as the second if statement only matters if the state is alive, thus reducing the amount of if calls
-                    if self.get_state(&Vec2::new(pos.x + off1, pos.y + off2)) == State::Alive {
-                        if !(off1 == 0 && off2 == 0) {
-                            count += 1;
-                        }
-                    }
+            for off in offset {
+                if self.get_state(&Vec2::new(pos.x + off.0, pos.y + off.1)) == State::Alive {
+                    count += 1;
                 }
             }
             return count;
