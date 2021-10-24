@@ -1,3 +1,4 @@
+// TODO: Use a graphics library like druid?
 pub mod life {
     use std::{fmt::{self, Display}, thread, time::Duration};
     // {..., fs::File}
@@ -40,7 +41,7 @@ pub mod life {
             };
         }
 
-        /// Converts a Vec2 to an Option<usize> index or None if the index is out of range.
+        /// Converts a `Vec2` to an `Option<usize>` index, or `None` if the index is out of range.
         pub fn get_index(&self, pos: &Vec2<isize>) -> Option<usize> {
             // Return None if it's not inside the Grid
             if (pos.x > self.rows || pos.x <= 0) || (pos.y > self.columns || pos.y <= 0) {
@@ -117,7 +118,7 @@ pub mod life {
     }
     
     impl ConwayEngine {
-        /// Returns a new ConwayEngine with a grid of size rows * columns.
+        /// Returns a new ConwayEngine with a grid of size `rows * columns`.
         pub fn new(rows: isize, columns: isize) -> ConwayEngine {
             return ConwayEngine {
                 generation: 0,
