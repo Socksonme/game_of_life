@@ -1,4 +1,6 @@
 // TODO: Use a graphics library like druid?
+// TODO: Add a method to change the state of the game at the start of it, using rows and columns as indexes?
+// Could also change the initial display too include numbers for the rows and columns like how they are on a chessboard, then remove them later  
 pub mod life {
     use std::{fmt::{self, Display}, thread, time::Duration};
     // {..., fs::File}
@@ -13,15 +15,15 @@ pub mod life {
     }
 
     pub struct Vec2<T> {
-        x: T,
-        y: T
+        row: T,
+        column: T
     }
 
     impl<T> Vec2<T> {
-        pub fn new(x: T, y: T) -> Vec2<T> {
+        pub fn new(row: T, column: T) -> Vec2<T> {
             return Vec2 {
-                x,
-                y
+                row,
+                column
             };
         }
     }
@@ -44,11 +46,11 @@ pub mod life {
         /// Converts a [`Vec2`] to an `Some(usize)` index, or [`None`] if the index is out of range.
         pub fn get_index(&self, pos: &Vec2<isize>) -> Option<usize> {
             // Return None if it's not inside the Grid
-            if (pos.x > self.rows || pos.x <= 0) || (pos.y > self.columns || pos.y <= 0) {
+            if (pos.row > self.rows || pos.row <= 0) || (pos.column > self.columns || pos.column <= 0) {
                 return None;
             }
 
-            return Some((pos.x * self.columns + pos.y - self.columns - 1) as usize);
+            return Some((pos.row * self.columns + pos.column - self.columns - 1) as usize);
         }
 
         pub fn get_state(&self, pos: &Vec2<isize>) -> State {
@@ -67,7 +69,7 @@ pub mod life {
                                                 (1, -1), (1, 0), (1, 1)];
 
             for off in offset {
-                if self.get_state(&Vec2::new(pos.x + off.0, pos.y + off.1)) == State::Alive {
+                if self.get_state(&Vec2::new(pos.row + off.0, pos.column + off.1)) == State::Alive {
                     count += 1;
                 }
             }
@@ -98,6 +100,7 @@ pub mod life {
     impl Display for State {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if *self == State::Alive {
+                // U+2588 - Large unicode box
                 return write!(f, "\u{2588}");
             }
             return write!(f, " ");
