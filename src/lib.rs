@@ -41,7 +41,7 @@ pub mod life {
             };
         }
 
-        /// Converts a `Vec2` to an `Option<usize>` index, or `None` if the index is out of range.
+        /// Converts a [`Vec2`] to an `Some(usize)` index, or [`None`] if the index is out of range.
         pub fn get_index(&self, pos: &Vec2<isize>) -> Option<usize> {
             // Return None if it's not inside the Grid
             if (pos.x > self.rows || pos.x <= 0) || (pos.y > self.columns || pos.y <= 0) {
@@ -98,9 +98,9 @@ pub mod life {
     impl Display for State {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if *self == State::Alive {
-                return write!(f, "X");
+                return write!(f, "\u{2588}");
             }
-            return write!(f, "~");
+            return write!(f, " ");
         }
     }
 
@@ -140,7 +140,7 @@ pub mod life {
             }
             self.grid = next_grid;
         }
-        /// Sets a cell at `pos` to `State::Alive`, as long as it's inside the grid.
+        /// Sets a cell at `pos` to [`State::Alive`], as long as it's inside the grid.
         pub fn set_cell(&mut self, pos: &Vec2<isize>) {
             self.grid.make_cell(pos);
         }
