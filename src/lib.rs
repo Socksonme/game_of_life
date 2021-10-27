@@ -134,7 +134,7 @@ pub mod life {
             println!("Give a single co-ordinate with the format \"row, column\" to set/remove a cell or type anything else to stop changing the board.");
     
             io::stdin().read_line(&mut input)?;
-            let coords: Vec<&str> = input.split(", ").map(|s| s.trim()).collect();
+            let coords: Vec<&str> = input.split(",").map(|s| s.trim()).collect();
             for string in coords.iter() {
                 println!("{}", string);
             }
@@ -207,6 +207,7 @@ pub mod life {
         /// Displays the current grid and goes to the next generation.
         pub fn run(&mut self) -> Result<(), Box<dyn Error>>{
             self.display();
+            
             loop {
                 let answer = ConwayEngine::from_user_input()?;
                 match answer {
@@ -219,6 +220,7 @@ pub mod life {
                 }
                 self.display();
             }
+
             loop {
                 self.next_generation();
                 self.display();
