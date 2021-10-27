@@ -2,7 +2,7 @@
 // TODO: Add a method to change the state of the game at the start of it, using rows and columns as indexes?
 // Could also change the initial display too include numbers for the rows and columns like how they are on a chessboard, then remove them later  
 pub mod life {
-    use std::{fmt::{self, Display}, thread, time::Duration};
+    use std::{fmt::{self, Display}, thread, time::Duration, io, error::Error};
     // {..., fs::File}
     // use serde::Deserialize;
     // use ron::de::from_reader;
@@ -28,6 +28,19 @@ pub mod life {
         }
     }
 
+    pub enum GridCommand {
+        Exit,
+        Set(Vec2<isize>),
+    }
+    
+    // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
+    #[repr(u8)]
+    #[derive(Debug, PartialEq, Copy, Clone)]
+    pub enum State {
+        Dead,
+        Alive,
+    }
+
     impl Grid {
         /// # Panics
         /// Panics if either the rows or columns are less than 1.
@@ -43,6 +56,7 @@ pub mod life {
             };
         }
 
+        
         /// Converts a [`Vec2`] to an `Some(usize)` index, or [`None`] if the index is out of range.
         pub fn get_index(&self, pos: &Vec2<isize>) -> Option<usize> {
             // Return None if it's not inside the Grid
@@ -61,13 +75,13 @@ pub mod life {
                 }
             };
         }
-
+        
         pub fn get_nearby(&self, pos: &Vec2<isize>) -> isize {
             let mut count: isize = 0;
             let offset: [(isize, isize); 8] = [(-1, -1), (-1, 0), (-1, 1),
-                                                (0, -1), (0, 1), 
-                                                (1, -1), (1, 0), (1, 1)];
-
+            (0, -1), (0, 1), 
+            (1, -1), (1, 0), (1, 1)];
+            
             for off in offset {
                 if self.get_state(&Vec2::new(pos.row + off.0, pos.column + off.1)) == State::Alive {
                     count += 1;
@@ -75,28 +89,21 @@ pub mod life {
             }
             return count;
         }
-
+        
         fn kill_cell(&mut self, pos: &Vec2<isize>) {
             if let Some(index) = self.get_index(pos) {
                 self.cells[index] = State::Dead;
             }
         }
-
+        
         fn make_cell(&mut self, pos: &Vec2<isize>) {
             if let Some(index) = self.get_index(pos) {
                 self.cells[index] = State::Alive;
             }
         }
     }
-
-    // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Copy, Clone)]
-    pub enum State {
-        Dead,
-        Alive,
-    }
-
+    
+    
     impl Display for State {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if *self == State::Alive {
@@ -106,7 +113,7 @@ pub mod life {
             return write!(f, " ");
         }
     }
-
+    
     pub struct ConwayEngine {
         generation: isize,
         grid: Grid
@@ -120,6 +127,30 @@ pub mod life {
                 grid: Grid::new(rows, columns),
             };
         }
+
+        pub fn from_user_input() -> Result<GridCommand, Box<dyn Error>> {
+            let mut input = String::new();
+    
+            println!("Give a single co-ordinate with the format \"row, column\" to set/remove a cell or type anything else to stop changing the board.");
+    
+            io::stdin().read_line(&mut input)?;
+            let coords: Vec<&str> = input.split(", ").map(|s| s.trim()).collect();
+            for string in coords.iter() {
+                println!("{}", string);
+            }
+            
+            match coords.len() {
+                num if num > 1 => {
+                    let row: isize = coords[0].parse()?;
+                    let col: isize = coords[1].parse()?;
+                    return Ok(GridCommand::Set(Vec2::new(row, col)));
+                }
+                _ => {
+                    return Ok(GridCommand::Exit);
+                }
+            }
+        }
+
         /// Updates the grid and increments the generation counter.
         pub fn next_generation(&mut self) {
             let mut next_grid = self.grid.clone();
@@ -143,9 +174,13 @@ pub mod life {
             }
             self.grid = next_grid;
         }
-        /// Sets a cell at `pos` to [`State::Alive`], as long as it's inside the grid.
+        /// Changes the state of a cell at `pos` to [`State::Alive`]/[`State::Dead`], as long as it's inside the grid.
         pub fn set_cell(&mut self, pos: &Vec2<isize>) {
-            self.grid.make_cell(pos);
+            if let State::Alive = self.grid.get_state(pos) {
+                self.grid.kill_cell(pos);
+            } else {
+                self.grid.make_cell(pos);
+            }
         }
 
         /// Displays the current grid.
@@ -170,10 +205,23 @@ pub mod life {
 
         /// Main game loop.
         /// Displays the current grid and goes to the next generation.
-        pub fn run(&mut self) {
+        pub fn run(&mut self) -> Result<(), Box<dyn Error>>{
+            self.display();
             loop {
+                let answer = ConwayEngine::from_user_input()?;
+                match answer {
+                    GridCommand::Set(pos) => {
+                        self.set_cell(&pos);
+                    }
+                    _ => {
+                        break;
+                    }
+                }
                 self.display();
+            }
+            loop {
                 self.next_generation();
+                self.display();
             }
         }
     }
