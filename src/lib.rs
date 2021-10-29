@@ -57,7 +57,7 @@ pub mod life {
         }
 
         
-        /// Converts a [`Vec2`] to an `Some(usize)` index, or [`None`] if the index is out of range.
+        /// Converts a [`Vec2`] to a `Some(usize)` index, or [`None`] if the index is out of range.
         pub fn get_index(&self, pos: &Vec2<isize>) -> Option<usize> {
             // Return None if it's not inside the Grid
             if (pos.row > self.rows || pos.row <= 0) || (pos.column > self.columns || pos.column <= 0) {
@@ -134,15 +134,23 @@ pub mod life {
             println!("Give a single co-ordinate with the format \"row, column\" to set/remove a cell or type anything else to stop changing the board.");
     
             io::stdin().read_line(&mut input)?;
-            let coords: Vec<&str> = input.split(",").map(|s| s.trim()).collect();
-            for string in coords.iter() {
-                println!("{}", string);
-            }
+            let coords: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
             
             match coords.len() {
                 num if num > 1 => {
-                    let row: isize = coords[0].parse()?;
-                    let col: isize = coords[1].parse()?;
+                    let row: isize = match coords[0].parse() {
+                        Err(_) => {
+                            return Ok(GridCommand::Exit);
+                        }
+                        Ok(r) => r
+                    };
+                    let col: isize = match coords[1].parse() {
+                        Err(_) => {
+                            return Ok(GridCommand::Exit);
+                        }
+                        Ok(c) => c
+                    };
+
                     return Ok(GridCommand::Set(Vec2::new(row, col)));
                 }
                 _ => {
