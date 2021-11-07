@@ -42,13 +42,7 @@ pub mod life {
     }
 
     impl Grid {
-        /// # Panics
-        /// Panics if either the rows or columns are less than 1.
         pub fn new(rows: isize, columns: isize) -> Grid {
-            if rows <= 0 || columns <= 0 {
-                eprintln!("Can't make a grid with less than 1 columns/rows.");
-                std::process::exit(1);
-            }
             return Grid {
                 cells: vec![State::Dead; (rows * columns) as usize],
                 columns,
@@ -89,7 +83,8 @@ pub mod life {
             }
             return count;
         }
-        
+
+
         fn kill_cell(&mut self, pos: &Vec2<isize>) {
             if let Some(index) = self.get_index(pos) {
                 self.cells[index] = State::Dead;
@@ -128,7 +123,44 @@ pub mod life {
             };
         }
 
-        pub fn from_user_input() -> Result<GridCommand, Box<dyn Error>> {
+        pub fn from_user_input() -> Result<ConwayEngine, Box<dyn Error>> {
+            loop {
+                let mut input = String::new();
+        
+                println!("Give the number of rows and columns (in the format of \"row, column\") that you want to be in the grid.");
+        
+                io::stdin().read_line(&mut input)?;
+                let size: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+                
+                match size.len() {
+                    len if len > 1 => {
+                        let row: isize = match size[0].parse() {
+                            Err(_) => {
+                                continue;
+                            }
+                            Ok(r) => r
+                        };
+                        let col: isize = match size[1].parse() {
+                            Err(_) => {
+                                continue;
+                            }
+                            Ok(c) => c
+                        };
+                        if row < 1 || col < 1 {
+                            println!("Grid cannot have less than one row/column.");
+                            continue;
+                        } 
+                        return Ok(ConwayEngine::new(row, col));
+                    }
+                    _ => {
+                        continue; 
+                    }
+                }
+            }
+        }
+
+
+        pub fn get_next() -> Result<GridCommand, Box<dyn Error>> {
             let mut input = String::new();
     
             println!("Give a single co-ordinate with the format \"row, column\" to set/remove a cell or type anything else to stop changing the board.");
@@ -137,7 +169,7 @@ pub mod life {
             let coords: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
             
             match coords.len() {
-                num if num > 1 => {
+                len if len > 1 => {
                     let row: isize = match coords[0].parse() {
                         Err(_) => {
                             return Ok(GridCommand::Exit);
@@ -217,7 +249,7 @@ pub mod life {
             self.display();
             
             loop {
-                let answer = ConwayEngine::from_user_input()?;
+                let answer = ConwayEngine::get_next()?;
                 match answer {
                     GridCommand::Set(pos) => {
                         self.set_cell(&pos);
