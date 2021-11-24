@@ -34,11 +34,11 @@ pub mod life {
     }
 
     pub enum GridCommand {
-        Exit,
+        Quit,
+        Start,
         Random,
         Clear,
-        Set(Vec2<isize>),
-        SetRange((isize, isize), (isize, isize)),
+        Set((isize, isize), (isize, isize)),
     }
 
     // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
@@ -72,11 +72,9 @@ pub mod life {
 
         pub fn get_state(&self, pos: &Vec2<isize>) -> State {
             match self.get_index(pos) {
-                Some(index) => return self.cells[index],
-                None => {
-                    return State::Dead;
-                }
-            };
+                Some(index) => self.cells[index],
+                None => State::Dead,
+            }
         }
 
         pub fn get_nearby(&self, pos: &Vec2<isize>) -> isize {
@@ -181,7 +179,7 @@ pub mod life {
         pub fn get_next() -> io::Result<GridCommand> {
             let mut input = String::new();
 
-            println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in anything else to stop changing the cells.", 
+            println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in anything else to start the game.", 
                 "row".cyan().bold(),
                 "column".cyan().bold(),
                 "row1-row2".cyan().bold(),
@@ -190,12 +188,17 @@ pub mod life {
                 "row2".cyan());
 
             io::stdin().read_line(&mut input)?;
-            match input.trim().to_lowercase().as_str() {
+            let input = input.trim();
+
+            match input.to_lowercase().as_str() {
                 "random" => {
                     return Ok(GridCommand::Random);
                 }
                 "clear" => {
                     return Ok(GridCommand::Clear);
+                }
+                "exit" | "quit" | "q" => {
+                    return Ok(GridCommand::Quit);
                 }
                 _ => {}
             }
@@ -226,12 +229,12 @@ pub mod life {
                     let row_range1: isize = if !row_ranges.is_empty() {
                         match row_ranges[0].parse() {
                             Err(_) => {
-                                return Ok(GridCommand::Exit);
+                                return Ok(GridCommand::Start);
                             }
                             Ok(row) => row,
                         }
                     } else {
-                        return Ok(GridCommand::Exit);
+                        return Ok(GridCommand::Start);
                     };
 
                     let row_range2: isize = if row_ranges.len() > 1 {
@@ -246,12 +249,12 @@ pub mod life {
                     let col_range1: isize = if !col_ranges.is_empty() {
                         match col_ranges[0].parse() {
                             Err(_) => {
-                                return Ok(GridCommand::Exit);
+                                return Ok(GridCommand::Start);
                             }
                             Ok(col) => col,
                         }
                     } else {
-                        return Ok(GridCommand::Exit);
+                        return Ok(GridCommand::Start);
                     };
 
                     let col_range2: isize = if col_ranges.len() > 1 {
@@ -263,18 +266,12 @@ pub mod life {
                         col_range1
                     };
 
-                    if row_range1 == row_range2 && col_range1 == col_range2 {
-                        return Ok(GridCommand::Set(Vec2::new(row_range1, col_range1)));
-                    }
-
-                    Ok(GridCommand::SetRange(
+                    Ok(GridCommand::Set(
                         (row_range1, row_range2),
                         (col_range1, col_range2),
                     ))
                 }
-                _ => {
-                    return Ok(GridCommand::Exit);
-                }
+                _ => Ok(GridCommand::Start),
             }
         }
 
@@ -325,7 +322,7 @@ pub mod life {
                 if ind == 0 {
                     ind_str = format!("{}", ind_str.green().bold());
                 }
-                return ind_str;
+                ind_str
             };
 
             result.push_str("\n ");
@@ -353,10 +350,7 @@ pub mod life {
             loop {
                 let answer = ConwayEngine::get_next()?;
                 match answer {
-                    GridCommand::Set(pos) => {
-                        self.set_cell(&pos);
-                    }
-                    GridCommand::SetRange((row1, row2), (col1, col2)) => {
+                    GridCommand::Set((row1, row2), (col1, col2)) => {
                         for r in row1.min(row2)..=row1.max(row2) {
                             for c in col1.min(col2)..=col1.max(col2) {
                                 self.set_cell(&Vec2::new(r, c));
@@ -375,8 +369,11 @@ pub mod life {
                         }
                     }
                     GridCommand::Clear => self.grid = Grid::new(self.grid.rows, self.grid.columns),
-                    GridCommand::Exit => {
+                    GridCommand::Start => {
                         break;
+                    }
+                    GridCommand::Quit => {
+                        return Ok(());
                     }
                 }
                 self.display();
