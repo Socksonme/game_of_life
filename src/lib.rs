@@ -1,7 +1,9 @@
 // TODO: Use a graphics library like druid?
-// TODO: Add a method to change the state of the game at the start of it, using rows and columns as indexes?
 // Could also change the initial display too include numbers for the rows and columns like how they are on a chessboard, then remove them later
 pub mod life {
+    const NUMS: &str = "0123456789";
+
+    use colored::*;
     use std::{
         error::Error,
         fmt::{self, Display},
@@ -33,6 +35,7 @@ pub mod life {
     pub enum GridCommand {
         Exit,
         Set(Vec2<isize>),
+        SetRange((isize, isize), (isize, isize)),
     }
 
     // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
@@ -135,10 +138,15 @@ pub mod life {
             loop {
                 let mut input = String::new();
 
-                println!("Give the number of rows and columns (in the format of \"row, column\") that you want to be in the grid.");
+                println!("Give the number of rows and columns in the format of {}, {} that you want to be in the grid.",
+                    "row".cyan().bold(), 
+                    "column".cyan().bold());
 
                 io::stdin().read_line(&mut input)?;
-                let size: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+                let size: Vec<&str> = input
+                    .split(',')
+                    .map(|s| s.trim_matches(|c| !NUMS.contains(c)))
+                    .collect();
 
                 match size.len() {
                     len if len > 1 => {
@@ -167,30 +175,89 @@ pub mod life {
             }
         }
 
-        pub fn get_next() -> Result<GridCommand, Box<dyn Error>> {
+        pub fn get_next() -> io::Result<GridCommand> {
             let mut input = String::new();
 
-            println!("Give a single co-ordinate with the format \"row, column\" to set/remove a cell or type anything else to stop changing the board.");
+            println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in anything else to stop changing the cells.", 
+                "row".cyan().bold(),
+                "column".cyan().bold(),
+                "row1-row2".cyan().bold(),
+                "col1-col2".cyan().bold(),
+                "row1".cyan(),
+                "row2".cyan());
 
             io::stdin().read_line(&mut input)?;
-            let coords: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+            let coords: Vec<&str> = input
+                .split(',')
+                .map(|s| s.trim_matches(|c| !NUMS.contains(c)))
+                .collect();
 
             match coords.len() {
                 len if len > 1 => {
-                    let row: isize = match coords[0].parse() {
-                        Err(_) => {
-                            return Ok(GridCommand::Exit);
+                    // .then returns Some(F), where F: FnMut if the bool is true, else None
+                    let row_ranges: Vec<&str> = coords[0]
+                        .split('-')
+                        .filter_map(|s| {
+                            (!s.is_empty()).then(|| s.trim_matches(|c| !NUMS.contains(c)))
+                        })
+                        .take(2)
+                        .collect();
+                    let col_ranges: Vec<&str> = coords[1]
+                        .split('-')
+                        .filter_map(|s| {
+                            (!s.is_empty()).then(|| s.trim_matches(|c| !NUMS.contains(c)))
+                        })
+                        .take(2)
+                        .collect();
+
+                    let row_range1: isize = if !row_ranges.is_empty() {
+                        match row_ranges[0].parse() {
+                            Err(_) => {
+                                return Ok(GridCommand::Exit);
+                            }
+                            Ok(row) => row,
                         }
-                        Ok(r) => r,
-                    };
-                    let col: isize = match coords[1].parse() {
-                        Err(_) => {
-                            return Ok(GridCommand::Exit);
-                        }
-                        Ok(c) => c,
+                    } else {
+                        return Ok(GridCommand::Exit);
                     };
 
-                    return Ok(GridCommand::Set(Vec2::new(row, col)));
+                    let row_range2: isize = if row_ranges.len() > 1 {
+                        match row_ranges[1].parse() {
+                            Err(_) => row_range1,
+                            Ok(row) => row,
+                        }
+                    } else {
+                        row_range1
+                    };
+
+                    let col_range1: isize = if !col_ranges.is_empty() {
+                        match col_ranges[0].parse() {
+                            Err(_) => {
+                                return Ok(GridCommand::Exit);
+                            }
+                            Ok(col) => col,
+                        }
+                    } else {
+                        return Ok(GridCommand::Exit);
+                    };
+
+                    let col_range2: isize = if col_ranges.len() > 1 {
+                        match col_ranges[1].parse() {
+                            Err(_) => col_range1,
+                            Ok(col) => col,
+                        }
+                    } else {
+                        col_range1
+                    };
+
+                    if row_range1 == row_range2 && col_range1 == col_range2 {
+                        return Ok(GridCommand::Set(Vec2::new(row_range1, col_range1)));
+                    }
+
+                    Ok(GridCommand::SetRange(
+                        (row_range1, row_range2),
+                        (col_range1, col_range2),
+                    ))
                 }
                 _ => {
                     return Ok(GridCommand::Exit);
@@ -233,15 +300,31 @@ pub mod life {
         /// Displays the current grid.
         pub fn display(&self) {
             // Clears the terminal
-            println!("{esc}c", esc = 27 as char);
+            print!("{esc}c", esc = 27 as char);
             let mut result: String = String::new();
 
             result.push_str(&format!("\nGeneration: {}", self.generation));
 
+            result.push_str("\n ");
+            for col in 0..self.grid.columns {
+                let col = col % 10;
+
+                let mut col_ind = col.to_string();
+                if col == 0 {
+                    col_ind = format!("{}", col_ind.green().bold());
+                }
+                result.push_str(&col_ind);
+            }
             // .enumerate creates a new iterator which also keeps track of it's current iteration count
             for (counter, cell) in self.grid.cells.iter().enumerate() {
                 if counter as isize % self.grid.columns == 0 {
                     result.push('\n');
+
+                    let mut row_ind = (counter / self.grid.columns as usize % 10).to_string();
+                    if counter / self.grid.columns as usize % 10 == 0 {
+                        row_ind = format!("{}", row_ind.green().bold());
+                    }
+                    result.push_str(&row_ind);
                 }
                 result.push_str(&format!("{}", cell));
             }
@@ -260,6 +343,13 @@ pub mod life {
                 match answer {
                     GridCommand::Set(pos) => {
                         self.set_cell(&pos);
+                    }
+                    GridCommand::SetRange((row1, row2), (col1, col2)) => {
+                        for r in row1.min(row2)..=row1.max(row2) {
+                            for c in col1.min(col2)..=col1.max(col2) {
+                                self.set_cell(&Vec2::new(r, c));
+                            }
+                        }
                     }
                     _ => {
                         break;
