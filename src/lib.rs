@@ -318,26 +318,25 @@ pub mod life {
 
             result.push_str(&format!("\nGeneration: {}", self.generation));
 
+            let get_coloured = |ind: isize| {
+                let ind = ind % 10;
+
+                let mut ind_str = ind.to_string();
+                if ind == 0 {
+                    ind_str = format!("{}", ind_str.green().bold());
+                }
+                return ind_str;
+            };
+
             result.push_str("\n ");
             for col in 0..self.grid.columns {
-                let col = col % 10;
-
-                let mut col_ind = col.to_string();
-                if col == 0 {
-                    col_ind = format!("{}", col_ind.green().bold());
-                }
-                result.push_str(&col_ind);
+                result.push_str(&get_coloured(col));
             }
             // .enumerate creates a new iterator which also keeps track of it's current iteration count
             for (counter, cell) in self.grid.cells.iter().enumerate() {
                 if counter as isize % self.grid.columns == 0 {
                     result.push('\n');
-
-                    let mut row_ind = (counter / self.grid.columns as usize % 10).to_string();
-                    if counter / self.grid.columns as usize % 10 == 0 {
-                        row_ind = format!("{}", row_ind.green().bold());
-                    }
-                    result.push_str(&row_ind);
+                    result.push_str(&get_coloured(counter as isize / self.grid.columns));
                 }
                 result.push_str(&format!("{}", cell));
             }
