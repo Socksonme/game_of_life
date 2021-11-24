@@ -4,6 +4,7 @@ pub mod life {
     const NUMS: &str = "0123456789";
 
     use colored::*;
+    use rand::{distributions::Uniform, prelude::*};
     use std::{
         error::Error,
         fmt::{self, Display},
@@ -34,6 +35,8 @@ pub mod life {
 
     pub enum GridCommand {
         Exit,
+        Random,
+        Clear,
         Set(Vec2<isize>),
         SetRange((isize, isize), (isize, isize)),
     }
@@ -187,6 +190,16 @@ pub mod life {
                 "row2".cyan());
 
             io::stdin().read_line(&mut input)?;
+            match input.trim().to_lowercase().as_str() {
+                "random" => {
+                    return Ok(GridCommand::Random);
+                }
+                "clear" => {
+                    return Ok(GridCommand::Clear);
+                }
+                _ => {}
+            }
+
             let coords: Vec<&str> = input
                 .split(',')
                 .map(|s| s.trim_matches(|c| !NUMS.contains(c)))
@@ -351,7 +364,19 @@ pub mod life {
                             }
                         }
                     }
-                    _ => {
+                    GridCommand::Random => {
+                        let mut rng = thread_rng();
+                        let uniform = Uniform::from(0.0..=1.0);
+                        for r in 1..=self.grid.rows {
+                            for c in 1..=self.grid.columns {
+                                if uniform.sample(&mut rng) > 0.5 {
+                                    self.set_cell(&Vec2::new(r, c));
+                                }
+                            }
+                        }
+                    }
+                    GridCommand::Clear => self.grid = Grid::new(self.grid.rows, self.grid.columns),
+                    GridCommand::Exit => {
                         break;
                     }
                 }
