@@ -1,8 +1,5 @@
-// TODO: Use a graphics library like druid?
-// Could also change the initial display too include numbers for the rows and columns like how they are on a chessboard, then remove them later
+// TODO: Use a graphics library like druid? (Probably needs a whole seperate github repo by now, lol)
 pub mod life {
-    const NUMS: &str = "0123456789";
-
     use colored::*;
     use rand::{distributions::Uniform, prelude::*};
     use std::{
@@ -13,9 +10,6 @@ pub mod life {
         thread,
         time::Duration,
     };
-    // {..., fs::File}
-    // use serde::Deserialize;
-    // use ron::de::from_reader;
 
     #[derive(Debug, Clone)]
     pub struct Grid {
@@ -40,6 +34,7 @@ pub mod life {
     pub enum GridCommand {
         Quit,
         Start,
+        Help,
         Random,
         Clear,
         Set((isize, isize), (isize, isize)),
@@ -51,6 +46,16 @@ pub mod life {
     pub enum State {
         Dead,
         Alive,
+    }
+
+    fn spawn_input_thread() -> Receiver<String> {
+        let (tx, rx) = channel();
+        thread::spawn(move || loop {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).expect("Invalid input");
+            tx.send(input).expect("Couldn't send input through channel");
+        });
+        rx
     }
 
     impl Grid {
@@ -150,10 +155,7 @@ pub mod life {
                     "column".cyan().bold());
 
                 io::stdin().read_line(&mut input)?;
-                let size: Vec<&str> = input
-                    .split(',')
-                    .map(|s| s.trim_matches(|c| !NUMS.contains(c)))
-                    .collect();
+                let size: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
 
                 if size.len() > 1 {
                     let row: isize = match size[0].parse() {
@@ -183,68 +185,64 @@ pub mod life {
         // if let Some(commnand) = get_command(input) { return command; }
         fn handle_input(input: &str) -> Option<GridCommand> {
             match input {
+                "start" => Some(GridCommand::Start),
                 "random" => Some(GridCommand::Random),
                 "clear" => Some(GridCommand::Clear),
                 "exit" | "quit" | "q" | "e" => Some(GridCommand::Quit),
+                "help" => Some(GridCommand::Help),
                 _ => None,
             }
         }
 
-        pub fn get_command() -> io::Result<GridCommand> {
+        pub fn get_command() -> io::Result<Result<GridCommand, String>> {
             let mut input = String::new();
-
-            println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in anything else to start the game.", 
-                "row".cyan().bold(),
-                "column".cyan().bold(),
-                "row1-row2".cyan().bold(),
-                "col1-col2".cyan().bold(),
-                "row1".cyan(),
-                "row2".cyan());
 
             io::stdin().read_line(&mut input)?;
             let input = input.trim();
 
             if let Some(command) = Self::handle_input(input.to_lowercase().as_str()) {
-                return Ok(command);
+                return Ok(Ok(command));
             }
 
-            let coords: Vec<&str> = input
-                .split(',')
-                .map(|s| s.trim_matches(|c| !NUMS.contains(c)))
-                .collect();
+            let coords: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
 
             match coords.len() {
-                len if len > 1 => {
+                len if len == 2 => {
                     // .then returns Some(F), where F: FnMut if the bool is true, else None
                     let row_ranges: Vec<&str> = coords[0]
                         .split('-')
-                        .filter_map(|s| {
-                            (!s.is_empty()).then(|| s.trim_matches(|c| !NUMS.contains(c)))
-                        })
-                        .take(2)
+                        .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
                         .collect();
                     let col_ranges: Vec<&str> = coords[1]
                         .split('-')
-                        .filter_map(|s| {
-                            (!s.is_empty()).then(|| s.trim_matches(|c| !NUMS.contains(c)))
-                        })
-                        .take(2)
+                        .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
                         .collect();
 
                     let row_range1: isize = if !row_ranges.is_empty() {
                         match row_ranges[0].parse() {
                             Err(_) => {
-                                return Ok(GridCommand::Start);
+                                return Ok(Err(format!(
+                                    "Invalid first row index \'{}\'",
+                                    row_ranges[0]
+                                )));
                             }
                             Ok(row) => row,
                         }
                     } else {
-                        return Ok(GridCommand::Start);
+                        return Ok(Err(format!(
+                            "Invalid first row index \"{}\"",
+                            row_ranges[0]
+                        )));
                     };
 
                     let row_range2: isize = if row_ranges.len() > 1 {
                         match row_ranges[1].parse() {
-                            Err(_) => row_range1,
+                            Err(_) => {
+                                return Ok(Err(format!(
+                                    "Invalid second row index \'{}\'",
+                                    row_ranges[1]
+                                )));
+                            }
                             Ok(row) => row,
                         }
                     } else {
@@ -254,29 +252,41 @@ pub mod life {
                     let col_range1: isize = if !col_ranges.is_empty() {
                         match col_ranges[0].parse() {
                             Err(_) => {
-                                return Ok(GridCommand::Start);
+                                return Ok(Err(format!(
+                                    "Invalid first column index \'{}\'",
+                                    col_ranges[0]
+                                )));
                             }
                             Ok(col) => col,
                         }
                     } else {
-                        return Ok(GridCommand::Start);
+                        return Ok(Err(format!(
+                            "Invalid first column index \'{}\'",
+                            col_ranges[0]
+                        )));
                     };
 
                     let col_range2: isize = if col_ranges.len() > 1 {
                         match col_ranges[1].parse() {
-                            Err(_) => col_range1,
+                            Err(_) => {
+                                return Ok(Err(format!(
+                                    "Invalid second column index \'{}\'",
+                                    col_ranges[1]
+                                )));
+                            }
                             Ok(col) => col,
                         }
                     } else {
                         col_range1
                     };
 
-                    Ok(GridCommand::Set(
+                    Ok(Ok(GridCommand::Set(
                         (row_range1, row_range2),
                         (col_range1, col_range2),
-                    ))
+                    )))
                 }
-                _ => Ok(GridCommand::Start),
+                len if len > 2 => Ok(Err(format!("Unexpected position \'{}\'", coords[2]))),
+                _ => Ok(Err(format!("Invalid command \'{}\'", input))),
             }
         }
 
@@ -350,43 +360,72 @@ pub mod life {
 
         /// Main game loop.
         /// Displays the current grid and goes to the next generation.
-        // Seperate logic for handling commands?
         pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
             self.display();
 
             loop {
+                println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in {} to get the list of commands.", 
+                    "row".cyan().bold(),
+                    "column".cyan().bold(),
+                    "row1-row2".cyan().bold(),
+                    "col1-col2".cyan().bold(),
+                    "row1".cyan(),
+                    "row2".cyan(),
+                    "help".green().bold());
                 let answer = Self::get_command()?;
                 match answer {
-                    GridCommand::Set((row1, row2), (col1, col2)) => {
-                        for r in row1.min(row2)..=row1.max(row2) {
-                            for c in col1.min(col2)..=col1.max(col2) {
-                                self.set_cell(&Vec2::new(r, c));
-                            }
-                        }
-                    }
-                    GridCommand::Random => {
-                        let mut rng = thread_rng();
-                        let uniform = Uniform::from(0.0..=1.0);
-                        for r in 1..=self.grid.rows {
-                            for c in 1..=self.grid.columns {
-                                if uniform.sample(&mut rng) > 0.5 {
+                    Ok(command) => match command {
+                        GridCommand::Set((row1, row2), (col1, col2)) => {
+                            for r in row1.min(row2)..=row1.max(row2) {
+                                for c in col1.min(col2)..=col1.max(col2) {
                                     self.set_cell(&Vec2::new(r, c));
                                 }
                             }
                         }
-                    }
-                    GridCommand::Clear => self.grid = Grid::new(self.grid.rows, self.grid.columns),
-                    GridCommand::Start => {
-                        break;
-                    }
-                    GridCommand::Quit => {
-                        return Ok(());
+                        GridCommand::Random => {
+                            let mut rng = thread_rng();
+                            let uniform = Uniform::from(0.0..=1.0);
+                            for r in 1..=self.grid.rows {
+                                for c in 1..=self.grid.columns {
+                                    if uniform.sample(&mut rng) > 0.5 {
+                                        self.set_cell(&Vec2::new(r, c));
+                                    }
+                                }
+                            }
+                        }
+                        GridCommand::Help => {
+                            println!("{}\n{} to start the game\n{} to randomize the board\n{} to clear the board\n{} for help\n{} to quit\n", 
+                                "Commands:".blue(),
+                                "start".green().bold(),
+                                "random".green().bold(),
+                                "clear".green().bold(),
+                                "help".green().bold(),
+                                "q[uit]/e[xit]".green().bold());
+                            continue;
+                        }
+                        GridCommand::Clear => {
+                            self.grid = Grid::new(self.grid.rows, self.grid.columns)
+                        }
+                        GridCommand::Start => {
+                            break;
+                        }
+                        GridCommand::Quit => {
+                            return Ok(());
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("{}", e.red().bold());
+                        println!(
+                            "Type in {} to get the list of commands.",
+                            "help".green().bold()
+                        );
+                        continue;
                     }
                 }
                 self.display();
             }
 
-            let rx = Self::spawn_input_thread();
+            let rx = spawn_input_thread();
 
             loop {
                 let mut stopped = false;
@@ -412,21 +451,11 @@ pub mod life {
                         break;
                     }
                     // Sleep so you don't eat all of the cpu on one core (you can get input since it's on another thread)
-                    thread::sleep(Duration::from_millis(100));
+                    thread::sleep(Duration::from_millis(50));
                 }
                 self.next_generation();
                 self.display();
             }
-        }
-
-        fn spawn_input_thread() -> Receiver<String> {
-            let (tx, rx) = channel();
-            thread::spawn(move || loop {
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).expect("Invalid input");
-                tx.send(input).expect("Couldn't send input through channel");
-            });
-            rx
         }
     }
 }
