@@ -1,7 +1,7 @@
 use game_of_life::life::ConwayEngine;
 
 fn main() {
-    match ConwayEngine::from_user_input() {
+    match ConwayEngine::from_input() {
         Ok(mut engine) => {
             if let Err(err) = engine.run() {
                 eprintln!("Error while getting input: {}", err);

@@ -8,7 +8,9 @@ pub mod life {
     use std::{
         error::Error,
         fmt::{self, Display},
-        io, thread,
+        io,
+        sync::mpsc::*,
+        thread,
         time::Duration,
     };
     // {..., fs::File}
@@ -22,6 +24,7 @@ pub mod life {
         rows: isize,
     }
 
+    #[derive(Debug)]
     pub struct Vec2<T> {
         row: T,
         column: T,
@@ -33,6 +36,7 @@ pub mod life {
         }
     }
 
+    #[derive(Debug)]
     pub enum GridCommand {
         Quit,
         Start,
@@ -121,6 +125,7 @@ pub mod life {
         }
     }
 
+    #[derive(Debug)]
     pub struct ConwayEngine {
         generation: isize,
         grid: Grid,
@@ -135,7 +140,8 @@ pub mod life {
             }
         }
 
-        pub fn from_user_input() -> Result<ConwayEngine, Box<dyn Error>> {
+        // Maybe add to getting input function?
+        pub fn from_input() -> Result<ConwayEngine, Box<dyn Error>> {
             loop {
                 let mut input = String::new();
 
@@ -149,34 +155,42 @@ pub mod life {
                     .map(|s| s.trim_matches(|c| !NUMS.contains(c)))
                     .collect();
 
-                match size.len() {
-                    len if len > 1 => {
-                        let row: isize = match size[0].parse() {
-                            Err(_) => {
-                                continue;
-                            }
-                            Ok(r) => r,
-                        };
-                        let col: isize = match size[1].parse() {
-                            Err(_) => {
-                                continue;
-                            }
-                            Ok(c) => c,
-                        };
-                        if row < 1 || col < 1 {
-                            println!("Grid cannot have less than one row/column.");
+                if size.len() > 1 {
+                    let row: isize = match size[0].parse() {
+                        Err(_) => {
                             continue;
                         }
-                        return Ok(ConwayEngine::new(row, col));
-                    }
-                    _ => {
+                        Ok(r) => r,
+                    };
+                    let col: isize = match size[1].parse() {
+                        Err(_) => {
+                            continue;
+                        }
+                        Ok(c) => c,
+                    };
+                    if row < 1 || col < 1 {
+                        println!("Grid cannot have less than one row/column.");
                         continue;
                     }
+                    return Ok(Self::new(row, col));
                 }
+
+                continue;
             }
         }
 
-        pub fn get_next() -> io::Result<GridCommand> {
+        // something like this
+        // if let Some(commnand) = get_command(input) { return command; }
+        fn handle_input(input: &str) -> Option<GridCommand> {
+            match input {
+                "random" => Some(GridCommand::Random),
+                "clear" => Some(GridCommand::Clear),
+                "exit" | "quit" | "q" | "e" => Some(GridCommand::Quit),
+                _ => None,
+            }
+        }
+
+        pub fn get_command() -> io::Result<GridCommand> {
             let mut input = String::new();
 
             println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in anything else to start the game.", 
@@ -190,17 +204,8 @@ pub mod life {
             io::stdin().read_line(&mut input)?;
             let input = input.trim();
 
-            match input.to_lowercase().as_str() {
-                "random" => {
-                    return Ok(GridCommand::Random);
-                }
-                "clear" => {
-                    return Ok(GridCommand::Clear);
-                }
-                "exit" | "quit" | "q" => {
-                    return Ok(GridCommand::Quit);
-                }
-                _ => {}
+            if let Some(command) = Self::handle_input(input.to_lowercase().as_str()) {
+                return Ok(command);
             }
 
             let coords: Vec<&str> = input
@@ -315,6 +320,7 @@ pub mod life {
 
             result.push_str(&format!("\nGeneration: {}", self.generation));
 
+            // For the row and column numbers
             let get_coloured = |ind: isize| {
                 let ind = ind % 10;
 
@@ -344,11 +350,12 @@ pub mod life {
 
         /// Main game loop.
         /// Displays the current grid and goes to the next generation.
+        // Seperate logic for handling commands?
         pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
             self.display();
 
             loop {
-                let answer = ConwayEngine::get_next()?;
+                let answer = Self::get_command()?;
                 match answer {
                     GridCommand::Set((row1, row2), (col1, col2)) => {
                         for r in row1.min(row2)..=row1.max(row2) {
@@ -379,10 +386,47 @@ pub mod life {
                 self.display();
             }
 
+            let rx = Self::spawn_input_thread();
+
             loop {
+                let mut stopped = false;
+                loop {
+                    match rx.try_recv() {
+                        Ok(key) => {
+                            let key = key.trim();
+                            match key {
+                                "quit" | "exit" | "q" | "e" => {
+                                    return Ok(());
+                                }
+                                "stop" => stopped = true,
+                                "start" => stopped = false,
+                                _ => {}
+                            }
+                        }
+                        Err(TryRecvError::Empty) => {}
+                        Err(e) => {
+                            return Err(Box::new(e));
+                        }
+                    }
+                    if !stopped {
+                        break;
+                    }
+                    // Sleep so you don't eat all of the cpu on one core (you can get input since it's on another thread)
+                    thread::sleep(Duration::from_millis(100));
+                }
                 self.next_generation();
                 self.display();
             }
+        }
+
+        fn spawn_input_thread() -> Receiver<String> {
+            let (tx, rx) = channel();
+            thread::spawn(move || loop {
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).expect("Invalid input");
+                tx.send(input).expect("Couldn't send input through channel");
+            });
+            rx
         }
     }
 }
