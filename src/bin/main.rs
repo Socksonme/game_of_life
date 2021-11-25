@@ -1,12 +1,16 @@
-use game_of_life::life::{ConwayEngine, Vec2};
+use game_of_life::life::ConwayEngine;
 
 fn main() {
-    let mut engine = ConwayEngine::new(80, 80);
-    engine.set_cell(&Vec2::new(40, 40));
-    engine.set_cell(&Vec2::new(40, 41));
-    engine.set_cell(&Vec2::new(41, 41));
-    engine.set_cell(&Vec2::new(43, 39));
-    engine.set_cell(&Vec2::new(43, 38));
-    engine.set_cell(&Vec2::new(42, 38));
-    engine.run();
+    match ConwayEngine::from_input() {
+        Ok(mut engine) => {
+            if let Err(err) = engine.run() {
+                eprintln!("Error while getting input: {}", err);
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("Error while getting input: {}", e);
+            std::process::exit(1);
+        }
+    }
 }

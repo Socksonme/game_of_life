@@ -1,11 +1,15 @@
-// TODO: Use a graphics library like druid?
-// TODO: Add a method to change the state of the game at the start of it, using rows and columns as indexes?
-// Could also change the initial display too include numbers for the rows and columns like how they are on a chessboard, then remove them later  
+// TODO: Use a graphics library like druid? (Probably needs a whole seperate github repo by now, lol)
 pub mod life {
-    use std::{fmt::{self, Display}, thread, time::Duration};
-    // {..., fs::File}
-    // use serde::Deserialize;
-    // use ron::de::from_reader;
+    use colored::*;
+    use rand::{distributions::Uniform, prelude::*};
+    use std::{
+        error::Error,
+        fmt::{self, Display},
+        io,
+        sync::mpsc::*,
+        thread,
+        time::Duration,
+    };
 
     #[derive(Debug, Clone)]
     pub struct Grid {
@@ -14,66 +18,93 @@ pub mod life {
         rows: isize,
     }
 
+    #[derive(Debug)]
     pub struct Vec2<T> {
         row: T,
-        column: T
+        column: T,
     }
 
     impl<T> Vec2<T> {
         pub fn new(row: T, column: T) -> Vec2<T> {
-            return Vec2 {
-                row,
-                column
-            };
+            Vec2 { row, column }
         }
     }
 
+    #[derive(Debug)]
+    pub enum GridCommand {
+        Quit,
+        Start,
+        Help,
+        Random,
+        Clear,
+        Set((isize, isize), (isize, isize)),
+    }
+
+    // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
+    #[repr(u8)]
+    #[derive(Debug, PartialEq, Copy, Clone)]
+    pub enum State {
+        Dead,
+        Alive,
+    }
+
+    fn spawn_input_thread() -> Receiver<String> {
+        let (tx, rx) = channel();
+        thread::spawn(move || loop {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).expect("Invalid input");
+            tx.send(input).expect("Couldn't send input through channel");
+        });
+        rx
+    }
+
     impl Grid {
-        /// # Panics
-        /// Panics if either the rows or columns are less than 1.
         pub fn new(rows: isize, columns: isize) -> Grid {
-            if rows <= 0 || columns <= 0 {
-                eprintln!("Can't make a grid with less than 1 columns/rows.");
-                std::process::exit(1);
-            }
-            return Grid {
+            Grid {
                 cells: vec![State::Dead; (rows * columns) as usize],
                 columns,
                 rows,
-            };
+            }
         }
 
-        /// Converts a [`Vec2`] to an `Some(usize)` index, or [`None`] if the index is out of range.
+        /// Converts a [`Vec2`] to a `Some(usize)` index, or [`None`] if the index is out of range.
         pub fn get_index(&self, pos: &Vec2<isize>) -> Option<usize> {
             // Return None if it's not inside the Grid
-            if (pos.row > self.rows || pos.row <= 0) || (pos.column > self.columns || pos.column <= 0) {
+            if (pos.row > self.rows || pos.row <= 0)
+                || (pos.column > self.columns || pos.column <= 0)
+            {
                 return None;
             }
 
-            return Some((pos.row * self.columns + pos.column - self.columns - 1) as usize);
+            Some((pos.row * self.columns + pos.column - self.columns - 1) as usize)
         }
 
         pub fn get_state(&self, pos: &Vec2<isize>) -> State {
             match self.get_index(pos) {
-                Some(index) => return self.cells[index],
-                None => {
-                    return State::Dead;
-                }
-            };
+                Some(index) => self.cells[index],
+                None => State::Dead,
+            }
         }
 
         pub fn get_nearby(&self, pos: &Vec2<isize>) -> isize {
             let mut count: isize = 0;
-            let offset: [(isize, isize); 8] = [(-1, -1), (-1, 0), (-1, 1),
-                                                (0, -1), (0, 1), 
-                                                (1, -1), (1, 0), (1, 1)];
+            let offset: [(isize, isize); 8] = [
+                (-1, -1),
+                (-1, 0),
+                (-1, 1),
+                (0, -1),
+                (0, 1),
+                (1, -1),
+                (1, 0),
+                (1, 1),
+            ];
 
             for off in offset {
                 if self.get_state(&Vec2::new(pos.row + off.0, pos.column + off.1)) == State::Alive {
                     count += 1;
                 }
             }
-            return count;
+            count
         }
 
         fn kill_cell(&mut self, pos: &Vec2<isize>) {
@@ -89,37 +120,176 @@ pub mod life {
         }
     }
 
-    // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
-    #[repr(u8)]
-    #[derive(Debug, PartialEq, Copy, Clone)]
-    pub enum State {
-        Dead,
-        Alive,
-    }
-
     impl Display for State {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if *self == State::Alive {
                 // U+2588 - Large unicode box
                 return write!(f, "\u{2588}");
             }
-            return write!(f, " ");
+            write!(f, " ")
         }
     }
 
+    #[derive(Debug)]
     pub struct ConwayEngine {
         generation: isize,
-        grid: Grid
+        grid: Grid,
     }
-    
+
     impl ConwayEngine {
         /// Returns a new ConwayEngine with a grid of size `rows * columns`.
         pub fn new(rows: isize, columns: isize) -> ConwayEngine {
-            return ConwayEngine {
+            ConwayEngine {
                 generation: 0,
                 grid: Grid::new(rows, columns),
-            };
+            }
         }
+
+        // Maybe add to getting input function?
+        pub fn from_input() -> Result<ConwayEngine, Box<dyn Error>> {
+            loop {
+                let mut input = String::new();
+
+                println!("Give the number of rows and columns in the format of {}, {} that you want to be in the grid.",
+                    "row".cyan().bold(), 
+                    "column".cyan().bold());
+
+                io::stdin().read_line(&mut input)?;
+                let size: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+
+                if size.len() > 1 {
+                    let row: isize = match size[0].parse() {
+                        Err(_) => {
+                            continue;
+                        }
+                        Ok(r) => r,
+                    };
+                    let col: isize = match size[1].parse() {
+                        Err(_) => {
+                            continue;
+                        }
+                        Ok(c) => c,
+                    };
+                    if row < 1 || col < 1 {
+                        println!("Grid cannot have less than one row/column.");
+                        continue;
+                    }
+                    return Ok(Self::new(row, col));
+                }
+
+                continue;
+            }
+        }
+
+        // something like this
+        // if let Some(commnand) = get_command(input) { return command; }
+        fn handle_input(input: &str) -> Option<GridCommand> {
+            match input {
+                "start" => Some(GridCommand::Start),
+                "random" => Some(GridCommand::Random),
+                "clear" => Some(GridCommand::Clear),
+                "exit" | "quit" | "q" | "e" => Some(GridCommand::Quit),
+                "help" => Some(GridCommand::Help),
+                _ => None,
+            }
+        }
+
+        pub fn get_command() -> io::Result<Result<GridCommand, String>> {
+            let mut input = String::new();
+
+            io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+
+            if let Some(command) = Self::handle_input(input.to_lowercase().as_str()) {
+                return Ok(Ok(command));
+            }
+
+            let coords: Vec<&str> = input.split(',').map(|s| s.trim()).collect();
+
+            match coords.len() {
+                len if len == 2 => {
+                    // .then returns Some(F), where F: FnMut if the bool is true, else None
+                    let row_ranges: Vec<&str> = coords[0]
+                        .split('-')
+                        .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
+                        .collect();
+                    let col_ranges: Vec<&str> = coords[1]
+                        .split('-')
+                        .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
+                        .collect();
+
+                    let row_range1: isize = if !row_ranges.is_empty() {
+                        match row_ranges[0].parse() {
+                            Err(_) => {
+                                return Ok(Err(format!(
+                                    "Invalid first row index \'{}\'",
+                                    row_ranges[0]
+                                )));
+                            }
+                            Ok(row) => row,
+                        }
+                    } else {
+                        return Ok(Err(format!(
+                            "Invalid first row index \"{}\"",
+                            row_ranges[0]
+                        )));
+                    };
+
+                    let row_range2: isize = if row_ranges.len() > 1 {
+                        match row_ranges[1].parse() {
+                            Err(_) => {
+                                return Ok(Err(format!(
+                                    "Invalid second row index \'{}\'",
+                                    row_ranges[1]
+                                )));
+                            }
+                            Ok(row) => row,
+                        }
+                    } else {
+                        row_range1
+                    };
+
+                    let col_range1: isize = if !col_ranges.is_empty() {
+                        match col_ranges[0].parse() {
+                            Err(_) => {
+                                return Ok(Err(format!(
+                                    "Invalid first column index \'{}\'",
+                                    col_ranges[0]
+                                )));
+                            }
+                            Ok(col) => col,
+                        }
+                    } else {
+                        return Ok(Err(format!(
+                            "Invalid first column index \'{}\'",
+                            col_ranges[0]
+                        )));
+                    };
+
+                    let col_range2: isize = if col_ranges.len() > 1 {
+                        match col_ranges[1].parse() {
+                            Err(_) => {
+                                return Ok(Err(format!(
+                                    "Invalid second column index \'{}\'",
+                                    col_ranges[1]
+                                )));
+                            }
+                            Ok(col) => col,
+                        }
+                    } else {
+                        col_range1
+                    };
+
+                    Ok(Ok(GridCommand::Set(
+                        (row_range1, row_range2),
+                        (col_range1, col_range2),
+                    )))
+                }
+                len if len > 2 => Ok(Err(format!("Unexpected position \'{}\'", coords[2]))),
+                _ => Ok(Err(format!("Invalid command \'{}\'", input))),
+            }
+        }
+
         /// Updates the grid and increments the generation counter.
         pub fn next_generation(&mut self) {
             let mut next_grid = self.grid.clone();
@@ -133,8 +303,8 @@ pub mod life {
                     match self.grid.get_nearby(&pos) {
                         3 => {
                             next_grid.make_cell(&pos);
-                        },
-                        2 => {},
+                        }
+                        2 => {}
                         _ => {
                             next_grid.kill_cell(&pos);
                         }
@@ -143,23 +313,43 @@ pub mod life {
             }
             self.grid = next_grid;
         }
-        /// Sets a cell at `pos` to [`State::Alive`], as long as it's inside the grid.
+        /// Changes the state of a cell at `pos` to [`State::Alive`]/[`State::Dead`], as long as it's inside the grid.
         pub fn set_cell(&mut self, pos: &Vec2<isize>) {
-            self.grid.make_cell(pos);
+            if let State::Alive = self.grid.get_state(pos) {
+                self.grid.kill_cell(pos);
+            } else {
+                self.grid.make_cell(pos);
+            }
         }
 
         /// Displays the current grid.
         pub fn display(&self) {
             // Clears the terminal
-            println!("{esc}c", esc = 27 as char);
+            print!("{esc}c", esc = 27 as char);
             let mut result: String = String::new();
 
             result.push_str(&format!("\nGeneration: {}", self.generation));
-            
-            // .enumerate creates a new iterator which also keeps track of it's current iteration count 
+
+            // For the row and column numbers
+            let get_coloured = |ind: isize| {
+                let ind = ind % 10;
+
+                let mut ind_str = ind.to_string();
+                if ind == 0 {
+                    ind_str = format!("{}", ind_str.green().bold());
+                }
+                ind_str
+            };
+
+            result.push_str("\n ");
+            for col in 0..self.grid.columns {
+                result.push_str(&get_coloured(col));
+            }
+            // .enumerate creates a new iterator which also keeps track of it's current iteration count
             for (counter, cell) in self.grid.cells.iter().enumerate() {
                 if counter as isize % self.grid.columns == 0 {
                     result.push('\n');
+                    result.push_str(&get_coloured(counter as isize / self.grid.columns));
                 }
                 result.push_str(&format!("{}", cell));
             }
@@ -170,10 +360,101 @@ pub mod life {
 
         /// Main game loop.
         /// Displays the current grid and goes to the next generation.
-        pub fn run(&mut self) {
+        pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
+            self.display();
+
             loop {
+                println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in {} to get the list of commands.", 
+                    "row".cyan().bold(),
+                    "column".cyan().bold(),
+                    "row1-row2".cyan().bold(),
+                    "col1-col2".cyan().bold(),
+                    "row1".cyan(),
+                    "row2".cyan(),
+                    "help".green().bold());
+                let answer = Self::get_command()?;
+                match answer {
+                    Ok(command) => match command {
+                        GridCommand::Set((row1, row2), (col1, col2)) => {
+                            for r in row1.min(row2)..=row1.max(row2) {
+                                for c in col1.min(col2)..=col1.max(col2) {
+                                    self.set_cell(&Vec2::new(r, c));
+                                }
+                            }
+                        }
+                        GridCommand::Random => {
+                            let mut rng = thread_rng();
+                            let uniform = Uniform::from(0.0..=1.0);
+                            for r in 1..=self.grid.rows {
+                                for c in 1..=self.grid.columns {
+                                    if uniform.sample(&mut rng) > 0.5 {
+                                        self.set_cell(&Vec2::new(r, c));
+                                    }
+                                }
+                            }
+                        }
+                        GridCommand::Help => {
+                            println!("{}\n{} to start the game\n{} to randomize the board\n{} to clear the board\n{} for help\n{} to quit\n", 
+                                "Commands:".blue(),
+                                "start".green().bold(),
+                                "random".green().bold(),
+                                "clear".green().bold(),
+                                "help".green().bold(),
+                                "q[uit]/e[xit]".green().bold());
+                            continue;
+                        }
+                        GridCommand::Clear => {
+                            self.grid = Grid::new(self.grid.rows, self.grid.columns)
+                        }
+                        GridCommand::Start => {
+                            break;
+                        }
+                        GridCommand::Quit => {
+                            return Ok(());
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("{}", e.red().bold());
+                        println!(
+                            "Type in {} to get the list of commands.",
+                            "help".green().bold()
+                        );
+                        continue;
+                    }
+                }
                 self.display();
+            }
+
+            let rx = spawn_input_thread();
+
+            loop {
+                let mut stopped = false;
+                loop {
+                    match rx.try_recv() {
+                        Ok(key) => {
+                            let key = key.trim();
+                            match key {
+                                "quit" | "exit" | "q" | "e" => {
+                                    return Ok(());
+                                }
+                                "stop" => stopped = true,
+                                "start" => stopped = false,
+                                _ => {}
+                            }
+                        }
+                        Err(TryRecvError::Empty) => {}
+                        Err(e) => {
+                            return Err(Box::new(e));
+                        }
+                    }
+                    if !stopped {
+                        break;
+                    }
+                    // Sleep so you don't eat all of the cpu on one core (you can get input since it's on another thread)
+                    thread::sleep(Duration::from_millis(50));
+                }
                 self.next_generation();
+                self.display();
             }
         }
     }
