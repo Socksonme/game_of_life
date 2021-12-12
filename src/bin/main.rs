@@ -1,4 +1,4 @@
-use game_of_life::life::ConwayEngine;
+use game_of_life::engine::ConwayEngine;
 
 fn main() {
     match ConwayEngine::from_input() {
