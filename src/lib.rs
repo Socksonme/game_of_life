@@ -16,15 +16,13 @@ pub mod engine {
         time::Duration,
     };
 
+    // Because I don't want to do .bold().red() for every fucking error
     macro_rules! err {
-        ($($e: expr),*) => {
-            $(
-                eprint!("{}", $e.bold().red());
-            )*
-            eprint!("\n");
+        () => {eprintln!();};
+        ($($t: tt)*) => {
+            eprintln!("{}", format!("{}", format_args!($($t)*)).bold().red());
         };
     }
-
 
     #[derive(Debug)]
     pub struct ConwayEngine {
@@ -85,7 +83,7 @@ pub mod engine {
         }
 
         // TODO: Could most likely refactor this
-        pub fn from_input() -> Result<ConwayEngine, io::Error> {
+        pub fn from_input() -> io::Result<ConwayEngine> {
             loop {
                 let mut input = String::new();
                 let mut grid_type = None;
@@ -153,10 +151,10 @@ pub mod engine {
         /// This function assumes that `input` has at least a len of 1
         fn handle_input(input: String) -> Option<GridCommand> {
             let commands = input
-            .split(' ')
-            .filter_map(|s| (!s.is_empty()).then(|| s.to_lowercase()))
-            .collect::<Vec<String>>();
-            
+                .split(' ')
+                .filter_map(|s| (!s.is_empty()).then(|| s.to_lowercase()))
+                .collect::<Vec<String>>();
+
             if commands.is_empty() {
                 err!("No command specified.");
                 return None;
@@ -260,23 +258,26 @@ pub mod engine {
         fn parse_ranges(
             row_ranges: Vec<String>,
             col_ranges: Vec<String>,
-        ) -> Result<((isize, isize), (isize, isize)), String> {
+        ) -> Option<((isize, isize), (isize, isize))> {
             // TODO: This shit is WET as fuck
             let row_range1: isize = if !row_ranges.is_empty() {
                 match row_ranges[0].parse() {
                     Err(_) => {
-                        return Err(format!("Invalid first row index \'{}\'", row_ranges[0]));
+                        err!("Invalid first row index \'{}\'", row_ranges[0]);
+                        return None;
                     }
                     Ok(row) => row,
                 }
             } else {
-                return Err(String::from("No first row index"));
+                err!("No first row index");
+                return None;
             };
 
             let row_range2: isize = if row_ranges.len() > 1 {
                 match row_ranges[1].parse() {
                     Err(_) => {
-                        return Err(format!("Invalid second row index \'{}\'", row_ranges[1]));
+                        err!("Invalid second row index \'{}\'", row_ranges[1]);
+                        return None;
                     }
                     Ok(row) => row,
                 }
@@ -287,25 +288,28 @@ pub mod engine {
             let col_range1: isize = if !col_ranges.is_empty() {
                 match col_ranges[0].parse() {
                     Err(_) => {
-                        return Err(format!("Invalid first column index \'{}\'", col_ranges[0]));
+                        err!("Invalid first column index \'{}\'", col_ranges[0]);
+                        return None;
                     }
                     Ok(col) => col,
                 }
             } else {
-                return Err(String::from("No first column index"));
+                err!("No first column index");
+                return None;
             };
 
             let col_range2: isize = if col_ranges.len() > 1 {
                 match col_ranges[1].parse() {
                     Err(_) => {
-                        return Err(format!("Invalid second column index \'{}\'", col_ranges[1]));
+                        err!("Invalid second column index \'{}\'", col_ranges[1]);
+                        return None;
                     }
                     Ok(col) => col,
                 }
             } else {
                 col_range1
             };
-            Ok(((row_range1, row_range2), (col_range1, col_range2)))
+            Some(((row_range1, row_range2), (col_range1, col_range2)))
         }
 
         fn get_ranges(coords: &str) -> Option<(Vec<String>, Vec<String>)> {
@@ -313,7 +317,7 @@ pub mod engine {
 
             match coords.len() {
                 len if len > 2 => {
-                    err!("Unexpected position ", "\'", coords[2], "\'");
+                    err!("Unexpected position \'{}\'", coords[2]);
                     return None;
                 }
                 len if len <= 1 => {
@@ -434,8 +438,7 @@ pub mod engine {
                     "row1".cyan(),
                     "row2".cyan(),
                     "help".green().bold());
-                
-                
+
                 let answer;
 
                 loop {
