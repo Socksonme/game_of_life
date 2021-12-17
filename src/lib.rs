@@ -1,9 +1,11 @@
 pub mod grid;
 pub mod shape;
+pub mod help_text;
 
 pub mod engine {
     use crate::grid::*;
     use crate::shape::*;
+    use crate::help_text;
 
     use colored::*;
     use rand::{distributions::Uniform, prelude::*};
@@ -16,7 +18,7 @@ pub mod engine {
         time::Duration,
     };
 
-    // Because I don't want to do .bold().red() for every fucking error
+    #[macro_export]
     macro_rules! err {
         () => {eprintln!();};
         ($($t: tt)*) => {
@@ -86,81 +88,88 @@ pub mod engine {
         pub fn from_input() -> io::Result<ConwayEngine> {
             loop {
                 let mut input = String::new();
-                let mut grid_type = None;
 
-                println!("Give the number of rows and columns in the format of {}, {} that you want to be in the grid\nand then (optionally - the default is {}) the type of the grid ({}/{})\n{},{} {}",
-                    "row".cyan().bold(),
-                    "column".cyan().bold(),
-                    "closed".cyan().bold(),
-                    "open".cyan().bold(),
-                    "closed".cyan().bold(),
-                    "row".cyan().bold(),
-                    "column".cyan().bold(),
-                    "type".cyan().bold());
+                println!("{}", help_text::init_text());
 
                 io::stdin().read_line(&mut input)?;
                 let inputs: Vec<String> = input
-                    .split(' ')
+                    .trim()
+                    .split('-')
                     .filter_map(|s| (!s.is_empty()).then(|| s.trim().to_lowercase()))
                     .collect();
-                if inputs.len() > 1 {
-                    grid_type = match inputs[1].as_str() {
-                        "open" => Some(GridType::Open),
-                        "closed" => Some(GridType::Closed),
-                        _ => {
-                            err!("Invalid grid type");
-                            continue;
-                        }
-                    };
+
+                if inputs.is_empty() {
+                    err!("No command specified.");
+                    continue;
+                } else if inputs.len() == 1 {
+                    err!("No grid type specified.");
+                    continue;
                 }
-                if !inputs.is_empty() {
-                    let size: Vec<&str> = inputs[0].split(',').map(|s| s.trim()).collect();
+                
+                let size: Vec<&str> = inputs[0].split(',').filter_map(|s| (!s.is_empty()).then(|| s.trim())).collect();
+                
+                if size.is_empty() {
+                    err!("No grid row specified.");
+                    continue;
+                } else if size.len() == 1 {
+                    err!("No grid column specified.");
+                    continue;
+                }
 
-                    if size.len() > 1 {
-                        let row: isize = match size[0].parse() {
-                            Err(_) => {
-                                continue;
-                            }
-                            Ok(r) => r,
-                        };
-                        let col: isize = match size[1].parse() {
-                            Err(_) => {
-                                continue;
-                            }
-                            Ok(c) => c,
-                        };
-                        if row < 1 || col < 1 {
-                            err!("Grid cannot have less than one row/column.");
-                            continue;
-                        }
-                        let grid_type = if let Some(gr_type) = grid_type {
-                            gr_type
-                        } else {
-                            GridType::Closed
-                        };
-
-                        return Ok(Self::new(row, col, grid_type));
+                // Set the grid size
+                let row: isize = match size[0].parse() {
+                    Err(_) => {
+                        err!("Invalid row \'{}\'.", size[0]);
+                        continue;
                     }
+                    Ok(r) => r,
+                };
+                let col: isize = match size[1].parse() {
+                    Err(_) => {
+                        err!("Invalid column \'{}\'.", size[1]);
+                        continue;
+                    }
+                    Ok(c) => c,
+                };
+
+                if row < 1 || col < 1 {
+                    err!("Grid cannot have less than one row/column.");
+                    continue;
                 }
 
-                continue;
+                // Set the grid type
+                let grid_type = match inputs[1].as_str() {
+                    "open" => GridType::Open,
+                    "closed" => GridType::Closed,
+                    _ => {
+                        err!("Invalid grid type.");
+                        continue;
+                    }
+                };
+
+                return Ok(Self::new(row, col, grid_type));
             }
         }
 
         // This is scuffed (size is fucked and it should throw more errors when exceeding size limits)
         /// This function assumes that `input` has at least a len of 1
-        fn handle_input(input: String) -> Option<GridCommand> {
+        fn handle_input(input: String) -> Result<GridCommand, String> {
             let commands = input
                 .split(' ')
                 .filter_map(|s| (!s.is_empty()).then(|| s.to_lowercase()))
                 .collect::<Vec<String>>();
 
             if commands.is_empty() {
-                err!("No command specified.");
-                return None;
+                return Err(String::from("No command specified."));
             }
 
             let len = commands.len();
+
+            match commands[0].as_str() {
+                _ => {
+                    return Err(format!("Invalid command {}", commands[0]));
+                }
+            }
 
             // !!!! DO NOT REMOVE UNTIL FIXED !!!!!
             // if len > 1 {
@@ -258,26 +267,23 @@ pub mod engine {
         fn parse_ranges(
             row_ranges: Vec<String>,
             col_ranges: Vec<String>,
-        ) -> Option<((isize, isize), (isize, isize))> {
+        ) -> Result<((isize, isize), (isize, isize)), String> {
             // TODO: This shit is WET as fuck
             let row_range1: isize = if !row_ranges.is_empty() {
                 match row_ranges[0].parse() {
                     Err(_) => {
-                        err!("Invalid first row index \'{}\'", row_ranges[0]);
-                        return None;
+                        return Err(format!("Invalid first row index \'{}\'", row_ranges[0]));
                     }
                     Ok(row) => row,
                 }
             } else {
-                err!("No first row index");
-                return None;
+                return Err(String::from("No first row index"));
             };
 
             let row_range2: isize = if row_ranges.len() > 1 {
                 match row_ranges[1].parse() {
                     Err(_) => {
-                        err!("Invalid second row index \'{}\'", row_ranges[1]);
-                        return None;
+                        return Err(format!("Invalid second row index \'{}\'", row_ranges[1]));
                     }
                     Ok(row) => row,
                 }
@@ -288,41 +294,36 @@ pub mod engine {
             let col_range1: isize = if !col_ranges.is_empty() {
                 match col_ranges[0].parse() {
                     Err(_) => {
-                        err!("Invalid first column index \'{}\'", col_ranges[0]);
-                        return None;
+                        return Err(format!("Invalid first column index \'{}\'", col_ranges[0]));
                     }
                     Ok(col) => col,
                 }
             } else {
-                err!("No first column index");
-                return None;
+                return Err(String::from("No first column index"));
             };
 
             let col_range2: isize = if col_ranges.len() > 1 {
                 match col_ranges[1].parse() {
                     Err(_) => {
-                        err!("Invalid second column index \'{}\'", col_ranges[1]);
-                        return None;
+                        return Err(format!("Invalid second column index \'{}\'", col_ranges[1]));
                     }
                     Ok(col) => col,
                 }
             } else {
                 col_range1
             };
-            Some(((row_range1, row_range2), (col_range1, col_range2)))
+            Ok(((row_range1, row_range2), (col_range1, col_range2)))
         }
 
-        fn get_ranges(coords: &str) -> Option<(Vec<String>, Vec<String>)> {
+        fn get_ranges(coords: &str) -> Result<(Vec<String>, Vec<String>), String> {
             let coords: Vec<&str> = coords.split(',').map(|s| s.trim()).collect();
 
             match coords.len() {
                 len if len > 2 => {
-                    err!("Unexpected position \'{}\'", coords[2]);
-                    return None;
+                    return Err(format!("Unexpected position \'{}\'", coords[2]));
                 }
                 len if len <= 1 => {
-                    err!("Not enough co-ordinates");
-                    return None;
+                    return Err(String::from("Not enough co-ordinates"));
                 }
                 _ => {}
             }
@@ -337,19 +338,19 @@ pub mod engine {
                 .split('-')
                 .filter_map(|s| (!s.is_empty()).then(|| s.trim().to_string()))
                 .collect();
-            Some((row_ranges, col_ranges))
+            Ok((row_ranges, col_ranges))
         }
 
         // split by spaces
-        pub fn get_command() -> io::Result<Option<GridCommand>> {
+        pub fn get_command() -> io::Result<Result<GridCommand, String>> {
             let mut input = String::new();
 
             io::stdin().read_line(&mut input)?;
             let input = input.trim();
 
             match Self::handle_input(String::from(input)) {
-                Some(command) => Ok(Some(command)),
-                None => Ok(None),
+                Ok(command) => Ok(Ok(command)),
+                Err(e) => Ok(Err(e)),
             }
         }
 
@@ -429,6 +430,7 @@ pub mod engine {
             self.display();
 
             // TODO: Fix this absoulte cancer, seperate match data into files? better game running logic, allowing for restarts
+            // TODO: Seperate into functions?
             loop {
                 println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in {} to get the list of commands.",
                     "row".cyan().bold(),
@@ -442,13 +444,11 @@ pub mod engine {
                 let answer;
 
                 loop {
-                    if let Some(com) = Self::get_command()? {
+                    if let Ok(com) = Self::get_command()? {
                         answer = com;
                         break;
                     }
                 }
-
-                // Maybe only the setting of things should be seperated?
 
                 match answer {
                     GridCommand::Set(rr, cr) => {
@@ -495,6 +495,7 @@ pub mod engine {
                         self.grid =
                             Grid::new(self.grid.rows, self.grid.columns, self.grid.grid_type)
                     }
+                    // TODO: Proper reszing?
                     GridCommand::Resize => {
                         self.grid = Self::from_input()?.grid;
                     }
