@@ -1,11 +1,11 @@
 pub mod grid;
-pub mod shape;
 pub mod help_text;
+pub mod shape;
 
 pub mod engine {
     use crate::grid::*;
-    use crate::shape::*;
     use crate::help_text;
+    use crate::shape::*;
 
     use colored::*;
     use rand::{distributions::Uniform, prelude::*};
@@ -38,13 +38,13 @@ pub mod engine {
         Quit,
         Start,
         Help,
-        Random,
+        Random(f64),
         Clear,
         // Fix this command
         Resize,
-        Set((isize, isize), (isize, isize)),
+        Set(Range, Range),
         // Change this to have an orientation
-        Shape(((isize, isize), (isize, isize)), Shape),
+        Shape((Range, Range), Shape),
     }
 
     // Setting the underlying type of the enum (So instead of beaing an i32, let's say, we can make it into a u8.)
@@ -89,7 +89,7 @@ pub mod engine {
             loop {
                 let mut input = String::new();
 
-                println!("{}", help_text::init_text());
+                help_text::init_text();
 
                 io::stdin().read_line(&mut input)?;
                 let inputs: Vec<String> = input
@@ -98,16 +98,17 @@ pub mod engine {
                     .filter_map(|s| (!s.is_empty()).then(|| s.trim().to_lowercase()))
                     .collect();
 
+                // Throw no grid type error later
                 if inputs.is_empty() {
                     err!("No command specified.");
                     continue;
-                } else if inputs.len() == 1 {
-                    err!("No grid type specified.");
-                    continue;
                 }
-                
-                let size: Vec<&str> = inputs[0].split(',').filter_map(|s| (!s.is_empty()).then(|| s.trim())).collect();
-                
+
+                let size: Vec<&str> = inputs[0]
+                    .split(',')
+                    .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
+                    .collect();
+
                 if size.is_empty() {
                     err!("No grid row specified.");
                     continue;
@@ -137,6 +138,11 @@ pub mod engine {
                     continue;
                 }
 
+                if inputs.len() == 1 {
+                    err!("No grid type specified.");
+                    continue;
+                }
+
                 // Set the grid type
                 let grid_type = match inputs[1].as_str() {
                     "open" => GridType::Open,
@@ -152,7 +158,6 @@ pub mod engine {
         }
 
         // This is scuffed (size is fucked and it should throw more errors when exceeding size limits)
-        /// This function assumes that `input` has at least a len of 1
         fn handle_input(input: String) -> Result<GridCommand, String> {
             let commands = input
                 .split(' ')
@@ -166,179 +171,135 @@ pub mod engine {
             let len = commands.len();
 
             match commands[0].as_str() {
-                _ => {
-                    return Err(format!("Invalid command {}", commands[0]));
+                "help" => {
+                    if len > 1 {
+                        return Err(format!("Unexpected arguments: {:?}", &commands[1..]));
+                    }
+                    Ok(GridCommand::Help)
                 }
+                "clear" => {
+                    if len > 1 {
+                        return Err(format!("Unexpected arguments: {:?}", &commands[1..]));
+                    }
+
+                    Ok(GridCommand::Clear)
+                }
+                "resize" => {
+                    if len > 1 {
+                        return Err(format!("Unexpected arguments: {:?}", &commands[1..]));
+                    }
+
+                    Ok(GridCommand::Resize)
+                }
+                "start" => {
+                    if len > 1 {
+                        return Err(format!("Unexpected arguments: {:?}", &commands[1..]));
+                    }
+
+                    Ok(GridCommand::Start)
+                }
+                "random" => {
+                    if len > 2 {
+                        return Err(format!("Unexpected arguments: {:?}", &commands[2..]));
+                    }
+
+                    let set_chance = if len == 2 {
+                        match commands[1].parse::<f64>() {
+                            Ok(n) => {
+                                if n < 0.0 {
+                                    return Err(String::from("Chance can't be below 0.0."));
+                                } else if n > 1.0 {
+                                    return Err(String::from("Chance can't be higher than 1.0."));
+                                }
+
+                                n
+                            }
+                            Err(_) => {
+                                return Err(format!("Invalid set chance \'{}\'", commands[1]));
+                            }
+                        }
+                    } else {
+                        0.5
+                    };
+
+                    Ok(GridCommand::Random(set_chance))
+                }
+                "quit" | "exit" | "e" | "q" => {
+                    if len > 1 {
+                        return Err(format!("Unexpected arguments: {:?}", &commands[1..]));
+                    }
+
+                    Ok(GridCommand::Quit)
+                }
+                "glider" | "square" | "circle" => {
+                    if len < 2 {
+                        return Err(String::from("Not enough arguments."));
+                    }
+
+                    Ok(GridCommand::Shape(
+                        Self::get_ranges(&commands[1])?,
+                        commands[0].parse()?,
+                    ))
+                }
+
+                _ => match Self::get_ranges(&commands[0]) {
+                    Ok((rr, cr)) => Ok(GridCommand::Set(rr, cr)),
+                    Err(e) => Err(e),
+                },
             }
-
-            // !!!! DO NOT REMOVE UNTIL FIXED !!!!!
-            // if len > 1 {
-            //     match commands[0].as_str() {
-            //         "glider" => {
-            //             let (row_range, col_range) = Self::get_ranges(&commands[1])?;
-
-            //             match Self::parse_ranges(row_range, col_range) {
-            //                 Ok((pos1, pos2)) => {
-            //                     return Some(GridCommand::Shape((pos1, pos2), Shape::Glider));
-            //                 }
-            //                 Err(e) => {
-            //                     err!(e);
-            //                     return None;
-            //                 }
-            //             }
-            //         }
-            //         "square" => {
-            //             let (row_range, col_range) = Self::get_ranges(&commands[1])?;
-
-            //             match Self::parse_ranges(row_range, col_range) {
-            //                 Ok((pos1, pos2)) => {
-            //                     return Some(GridCommand::Shape((pos1, pos2), Shape::Square));
-            //                 }
-            //                 Err(e) => {
-            //                     err!(e);
-            //                     return None;
-            //                 }
-            //             }
-            //         }
-            //         "circle" => {
-            //             let (row_range, col_range) = Self::get_ranges(&commands[1])?;
-
-            //             match Self::parse_ranges(row_range, col_range) {
-            //                 Ok((pos1, pos2)) => {
-            //                     return Some(GridCommand::Shape((pos1, pos2), Shape::Circle));
-            //                 }
-            //                 Err(e) => {
-            //                     err!(e);
-            //                     return None
-            //                 }
-            //             }
-            //         }
-            //         "resize" => {}
-            //         _ => {}
-            //     }
-            // }
-
-            // match commands[0].as_str() {
-            //     "start" => {
-            //         return Some(GridCommand::Start);
-            //     }
-            //     "random" => {
-            //         return Some(GridCommand::Random);
-            //     }
-            //     "clear" => {
-            //         return Some(GridCommand::Clear);
-            //     }
-            //     "exit" | "quit" | "q" | "e" => {
-            //         return Some(GridCommand::Quit);
-            //     }
-            //     "help" => {
-            //         return Some(GridCommand::Help);
-            //     }
-            //     _ => {}
-            // }
-
-            // let coords: Vec<&str> = commands[0].split(',').map(|s| s.trim()).collect();
-
-            // match coords.len() {
-            //     len if len == 2 => {
-            //         let (row_ranges, col_ranges) = Self::get_ranges(&commands[0])?;
-
-            //         match Self::parse_ranges(row_ranges, col_ranges) {
-            //             Err(e) => {
-            //                 err!(e);
-            //                 None
-            //             }
-
-            //             Ok((row_range, col_range)) => Some(GridCommand::Set(row_range, col_range)),
-            //         }
-            //     }
-            //     len if len > 2 => {
-            //         err!("Unexpected position ", "\'", coords[2], "\'");
-            //         None
-            //     }
-            //     _ => {
-            //         err!("Invalid command ", "\'", input, "\'");
-            //         None
-            //     }
-            // }
         }
 
-        /// Parses (row_ranges, col_ranges) -> Vec<String>s into Vec2<isize>s, or returns Err(String)
-        fn parse_ranges(
-            row_ranges: Vec<String>,
-            col_ranges: Vec<String>,
-        ) -> Result<((isize, isize), (isize, isize)), String> {
-            // TODO: This shit is WET as fuck
-            let row_range1: isize = if !row_ranges.is_empty() {
-                match row_ranges[0].parse() {
-                    Err(_) => {
-                        return Err(format!("Invalid first row index \'{}\'", row_ranges[0]));
-                    }
-                    Ok(row) => row,
-                }
-            } else {
-                return Err(String::from("No first row index"));
-            };
-
-            let row_range2: isize = if row_ranges.len() > 1 {
-                match row_ranges[1].parse() {
-                    Err(_) => {
-                        return Err(format!("Invalid second row index \'{}\'", row_ranges[1]));
-                    }
-                    Ok(row) => row,
-                }
-            } else {
-                row_range1
-            };
-
-            let col_range1: isize = if !col_ranges.is_empty() {
-                match col_ranges[0].parse() {
-                    Err(_) => {
-                        return Err(format!("Invalid first column index \'{}\'", col_ranges[0]));
-                    }
-                    Ok(col) => col,
-                }
-            } else {
-                return Err(String::from("No first column index"));
-            };
-
-            let col_range2: isize = if col_ranges.len() > 1 {
-                match col_ranges[1].parse() {
-                    Err(_) => {
-                        return Err(format!("Invalid second column index \'{}\'", col_ranges[1]));
-                    }
-                    Ok(col) => col,
-                }
-            } else {
-                col_range1
-            };
-            Ok(((row_range1, row_range2), (col_range1, col_range2)))
-        }
-
-        fn get_ranges(coords: &str) -> Result<(Vec<String>, Vec<String>), String> {
+        fn get_ranges(coords: &str) -> Result<(Range, Range), String> {
             let coords: Vec<&str> = coords.split(',').map(|s| s.trim()).collect();
 
-            match coords.len() {
-                len if len > 2 => {
-                    return Err(format!("Unexpected position \'{}\'", coords[2]));
-                }
-                len if len <= 1 => {
-                    return Err(String::from("Not enough co-ordinates"));
-                }
-                _ => {}
+            if coords.len() > 2 {
+                return Err(format!("Unexpected position \'{}\'", coords[2]));
+            } else if coords.len() <= 1 {
+                return Err(String::from("Not enough co-ordinates."));
             }
 
-            // TODO: WET code?
+            let mut rr: Vec<isize> = vec![];
+            let mut cr: Vec<isize> = vec![];
+
             // .then returns Some(F), where F: FnMut if the bool is true, else None
-            let row_ranges: Vec<String> = coords[0]
+            // only take 2 as ranges are defined as two isizes
+            for row in coords[0]
                 .split('-')
-                .filter_map(|s| (!s.is_empty()).then(|| s.trim().to_string()))
-                .collect();
-            let col_ranges: Vec<String> = coords[1]
+                .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
+                .take(2)
+            {
+                match row.parse() {
+                    Ok(n) => {
+                        rr.push(n);
+                    }
+                    _ => {
+                        return Err(format!("Invalid row {}", row));
+                    }
+                }
+            }
+
+            for col in coords[1]
                 .split('-')
-                .filter_map(|s| (!s.is_empty()).then(|| s.trim().to_string()))
-                .collect();
-            Ok((row_ranges, col_ranges))
+                .filter_map(|s| (!s.is_empty()).then(|| s.trim()))
+                .take(2)
+            {
+                match col.parse() {
+                    Ok(n) => {
+                        cr.push(n);
+                    }
+                    _ => {
+                        return Err(format!("Invalid column {}", col));
+                    }
+                }
+            }
+
+            let (r1, c1) = (rr[0], cr[0]);
+
+            let r2 = if rr.len() == 1 { r1 } else { rr[1] };
+
+            let c2 = if cr.len() == 1 { c1 } else { cr[1] };
+
+            Ok(((r1, r2), (c1, c2)))
         }
 
         // split by spaces
@@ -432,21 +393,19 @@ pub mod engine {
             // TODO: Fix this absoulte cancer, seperate match data into files? better game running logic, allowing for restarts
             // TODO: Seperate into functions?
             loop {
-                println!("Give a single co-ordinate in the format {}, {} to set/remove a cell or\n{}, {} where {}, {}, etc. are indices that will set/remove cells at those specified locations.\nType in {} to get the list of commands.",
-                    "row".cyan().bold(),
-                    "column".cyan().bold(),
-                    "row1-row2".cyan().bold(),
-                    "col1-col2".cyan().bold(),
-                    "row1".cyan(),
-                    "row2".cyan(),
-                    "help".green().bold());
+                help_text::run_text();
 
                 let answer;
 
                 loop {
-                    if let Ok(com) = Self::get_command()? {
-                        answer = com;
-                        break;
+                    match Self::get_command()? {
+                        Ok(com) => {
+                            answer = com;
+                            break;
+                        }
+                        Err(e) => {
+                            err!("{}", e);
+                        }
                     }
                 }
 
@@ -470,25 +429,19 @@ pub mod engine {
                             self.offset_set(rr, cr, &GLIDER);
                         }
                     },
-                    GridCommand::Random => {
+                    GridCommand::Random(set_chance) => {
                         let mut rng = thread_rng();
                         let uniform = Uniform::from(0.0..=1.0);
                         for r in 1..=self.grid.rows {
                             for c in 1..=self.grid.columns {
-                                if uniform.sample(&mut rng) > 0.5 {
+                                if uniform.sample(&mut rng) > set_chance {
                                     self.set_cell(&GridVec2::new(r, c));
                                 }
                             }
                         }
                     }
                     GridCommand::Help => {
-                        println!("{}\n{} to start the game\n{} to randomize the board\n{} to clear the board\n{} for help\n{} to quit\n",
-                            "Commands:".blue(),
-                            "start".green().bold(),
-                            "random".green().bold(),
-                            "clear".green().bold(),
-                            "help".green().bold(),
-                            "q[uit]/e[xit]".green().bold());
+                        help_text::command_help_text();
                         continue;
                     }
                     GridCommand::Clear => {
@@ -497,6 +450,8 @@ pub mod engine {
                     }
                     // TODO: Proper reszing?
                     GridCommand::Resize => {
+                        // Temporary grid so you stop using any extra memory
+                        self.grid = Grid::new(1, 1, GridType::Open);
                         self.grid = Self::from_input()?.grid;
                     }
                     GridCommand::Start => {
@@ -542,7 +497,7 @@ pub mod engine {
             }
         }
 
-        fn offset_set(&mut self, rr: (isize, isize), cr: (isize, isize), off: &[Offset]) {
+        fn offset_set(&mut self, rr: Range, cr: Range, off: &[Offset]) {
             for offset in off {
                 // To avoid unnecessary sets
                 for row in rr.0.min(rr.1)..=self.grid.rows.min(rr.0.max(rr.1)) {

@@ -1,6 +1,8 @@
 use crate::engine::State;
 use crate::shape::Offset;
 
+pub type Range = (isize, isize);
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum GridType {
@@ -19,8 +21,9 @@ impl<T> GridVec2<T> {
         GridVec2 { row, column }
     }
 }
-impl GridVec2<isize> {
-    pub fn from_offset(&self, offset: Offset) -> GridVec2<isize> {
+impl<T: std::ops::Add<isize, Output = T> + Copy> GridVec2<T> {
+    #[must_use]
+    pub fn from_offset(&self, offset: Offset) -> Self {
         GridVec2 {
             row: self.row + offset.0,
             column: self.column + offset.1,

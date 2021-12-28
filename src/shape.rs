@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 pub type Offset = (isize, isize);
 pub const SQUARE: [Offset; 8] = [
     (0, 0),
@@ -18,4 +20,18 @@ pub enum Shape {
     Square,
     Circle,
     Glider,
+}
+
+impl FromStr for Shape {
+    // I know this is VERY bad
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "glider" => Ok(Self::Glider),
+            "circle" => Ok(Self::Circle),
+            "sqaure" => Ok(Self::Square),
+            _ => Err(format!("Invalid shape {}", s)),
+        }
+    }
 }
